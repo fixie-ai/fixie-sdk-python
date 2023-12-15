@@ -1,2 +1,2 @@
-# voice-sdk-python
-Fixie Voice SDK for Python
+# fixie-sdk-python
+Fixie SDK for Python
