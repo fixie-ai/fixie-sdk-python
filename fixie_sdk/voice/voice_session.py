@@ -20,7 +20,7 @@ PING_INTERVAL = 5
 
 @dataclasses.dataclass
 class VoiceSessionParams:
-    webrtc_url: str
+    webrtc_url: Optional[str] = "wss://wsapi.fixie.ai"
     asr_provider: Optional[str] = None
     asr_language: Optional[str] = None
     tts_provider: Optional[str] = None
@@ -248,84 +248,3 @@ class VoiceSession(pyee_asyncio.AsyncIOEventEmitter):
     async def _send_data(self, msg):
         assert self._room is not None
         await self._room.local_participant.publish_data(msg.to_json())
-
-
-async def main():
-    source = audio_local.LocalAudioSource()
-    sink = audio_local.LocalAudioSink()
-    params = VoiceSessionParams(
-        webrtc_url=args.url,
-        agent_id=args.agent,
-        model=args.model,
-        tts_provider=args.tts,
-        tts_voice=args.tts_voice,
-    )
-    client = VoiceSession(source, sink, params)
-    done = asyncio.Event()
-    loop = asyncio.get_event_loop()
-
-    @client.on("state")
-    async def on_state(state):
-        logging.info(f"[session] state: {state.value}")
-        if state == types.SessionState.LISTENING:
-            print("User:  ", end="\r")
-        elif state == types.SessionState.THINKING:
-            print("Agent:  ", end="\r")
-
-    @client.on("input")
-    async def on_input(text, final):
-        print("User:  " + text, end="\n" if final else "\r")
-
-    @client.on("output")
-    async def on_output(text, final):
-        print("Agent: " + text, end="\n" if final else "\r")
-
-    @client.on("latency")
-    async def on_latency(metric, value):
-        logging.info(f"[session] latency: {metric.value}={value}")
-
-    @client.on("error")
-    async def on_error(error):
-        print(f"Error: {error}")
-        done.set()
-
-    loop.add_signal_handler(signal.SIGINT, lambda: done.set())
-    loop.add_signal_handler(signal.SIGTERM, lambda: done.set())
-    await client.warmup()
-    if not args.warmup_only:
-        await client.start()
-    await done.wait()
-    await client.stop()
-
-
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
-    parser.add_argument(
-        "--url",
-        "-u",
-        type=str,
-        default="wss://wsapi.fixie.ai",
-        help="URL to connect to",
-    )
-    parser.add_argument(
-        "--agent", "-a", type=str, default="dr-donut", help="Agent ID to talk to"
-    )
-    parser.add_argument(
-        "--tts",
-        "-t",
-        type=str,
-        help="TTS provider to use (e.g., eleven, playht)",
-    )
-    parser.add_argument("--tts-voice", type=str, help="TTS voice ID to use")
-    parser.add_argument("--model", "-m", type=str, help="Model the agent should use")
-    parser.add_argument(
-        "--warmup-only", action="store_true", help="Only connect to the server"
-    )
-    parser.add_argument(
-        "--verbose", "-v", action="store_true", help="Show verbose session information"
-    )
-    args = parser.parse_args()
-    logging.getLogger("livekit").disabled = True
-    if args.verbose:
-        logging.basicConfig(stream=sys.stdout, level=logging.INFO)
-    asyncio.run(main())
