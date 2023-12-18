@@ -1,9 +1,6 @@
-import argparse
 import asyncio
 import dataclasses
 import logging
-import signal
-import sys
 from typing import Optional
 
 import websockets
@@ -11,7 +8,6 @@ from livekit import rtc
 from pyee import asyncio as pyee_asyncio
 
 from fixie_sdk.voice import audio_base
-from fixie_sdk.voice import audio_local
 from fixie_sdk.voice import audio_track
 from fixie_sdk.voice import types
 

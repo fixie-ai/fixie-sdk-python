@@ -6,7 +6,9 @@ import sys
 
 from fixie_sdk.voice import audio_local
 from fixie_sdk.voice import types
-from fixie_sdk.voice.voice_session import VoiceSessionParams, VoiceSession
+from fixie_sdk.voice.voice_session import VoiceSession
+from fixie_sdk.voice.voice_session import VoiceSessionParams
+
 
 async def main():
     # Get the default microphone and audio output device.
@@ -55,14 +57,14 @@ async def main():
     # Set up signal handlers for SIGINT (Ctrl-C) and SIGTERM (kill).
     loop.add_signal_handler(signal.SIGINT, lambda: done.set())
     loop.add_signal_handler(signal.SIGTERM, lambda: done.set())
-    
+
     # Warm up the voice session by connecting to the server.
     await client.warmup()
-    
+
     # Not just warming up...Start the voice session.
     if not args.warmup_only:
         await client.start()
-    
+
     # Wait for the voice session to end.
     await done.wait()
     await client.stop()
@@ -70,13 +72,19 @@ async def main():
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--agent", "-a", type=str, default="dr-donut", help="Agent ID to talk to")
+    parser.add_argument(
+        "--agent", "-a", type=str, default="dr-donut", help="Agent ID to talk to"
+    )
     parser.add_argument("--tts-voice", "-tv", type=str, help="TTS voice ID to use")
-    parser.add_argument("--verbose", "-v", action="store_true", help="Show verbose session information")
-    parser.add_argument("--warmup-only", "-w", action="store_true", help="Only connect to the server")
+    parser.add_argument(
+        "--verbose", "-v", action="store_true", help="Show verbose session information"
+    )
+    parser.add_argument(
+        "--warmup-only", "-w", action="store_true", help="Only connect to the server"
+    )
     args = parser.parse_args()
 
     if args.verbose:
         logging.basicConfig(stream=sys.stdout, level=logging.INFO)
-    
+
     asyncio.run(main())
