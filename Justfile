@@ -44,6 +44,6 @@ test-verbose PATH=".":
 python *FLAGS:
     poetry run python {{FLAGS}}
 
-# Run the voice client locally
-run-voice *FLAGS:
-    poetry run python fixie_sdk/voice/client.py {{FLAGS}}
+# Run a voice example locally
+run-example *FLAGS:
+    poetry run python fixie_sdk/examples/voice_example.py {{FLAGS}}
