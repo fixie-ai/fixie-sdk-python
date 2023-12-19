@@ -2,7 +2,6 @@ import argparse
 import asyncio
 import logging
 import signal
-import sys
 
 from fixie_sdk.voice import audio_local
 from fixie_sdk.voice import types
