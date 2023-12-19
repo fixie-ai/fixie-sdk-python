@@ -6,7 +6,6 @@ Fixie SDK for Python
 
 ```bash
 pip install fixie
-touch fixie_voice_example.py
 ```
 
 ### Create voice_example.py
@@ -111,18 +110,10 @@ python voice_example.py
 ```bash
 poetry install
 ```
-1. Run example
-```bash
-just run-example
-```
-
-## Running the Included Voice Example
-While you can use `just run-example`, this is just a convenience method for `voice_example.py`
-1. Run example
+1. Run included voice example
 ```bash
 poetry run python fixie_sdk/examples/voice_example.py
 ```
-
 Use `Ctrl-C` to terminate the program.
 
 The example program will use the default microphone and output device (i.e. speaker) for your computer. These are set in this code:
