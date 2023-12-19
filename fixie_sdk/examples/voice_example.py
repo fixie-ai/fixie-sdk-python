@@ -6,8 +6,8 @@ import sys
 
 from fixie_sdk.voice import audio_local
 from fixie_sdk.voice import types
-from fixie_sdk.voice.voice_session import VoiceSession
-from fixie_sdk.voice.voice_session import VoiceSessionParams
+from fixie_sdk.voice.session import VoiceSession
+from fixie_sdk.voice.session import VoiceSessionParams
 
 
 async def main():
@@ -76,9 +76,6 @@ if __name__ == "__main__":
         "--agent", "-a", type=str, default="dr-donut", help="Agent ID to talk to"
     )
     parser.add_argument("--tts-voice", "-tv", type=str, help="TTS voice ID to use")
-    parser.add_argument(
-        "--verbose", "-v", action="store_true", help="Show verbose session information"
-    )
     parser.add_argument(
         "--warmup-only", "-w", action="store_true", help="Only connect to the server"
     )

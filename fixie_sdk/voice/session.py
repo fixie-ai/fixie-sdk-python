@@ -19,7 +19,7 @@ class VoiceSessionParams:
     webrtc_url: Optional[str] = "wss://wsapi.fixie.ai"
     asr_provider: Optional[str] = None
     asr_language: Optional[str] = None
-    tts_provider: Optional[str] = None
+    tts_provider: Optional[str] = "eleven-ws"
     tts_model: Optional[str] = None
     tts_voice: Optional[str] = None
     model: Optional[str] = None

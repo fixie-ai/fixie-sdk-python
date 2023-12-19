@@ -7,21 +7,29 @@ Fixie SDK for Python
 ```bash
 poetry install
 ```
-
 1. Run example
 ```bash
-poetry run python fixie_sdk/voice_example.py
+just run-example
+```
+
+
+## Voice Example
+While you can use `just run-example`, this is just a convenience method for `voice_example.py`
+1. Run example
+```bash
+poetry run python fixie_sdk/examples/voice_example.py
 ```
 
 Use `Ctrl-C` to terminate the program.
 
 The example program will use the default microphone and output device (i.e. speaker) for your computer. These are set in this code:
+
 ```python
 # Get the default microphone and audio output device.
 source = audio_local.LocalAudioSource()
 sink = audio_local.LocalAudioSink()
 ```
-You can find more information in the file `voice\audio_local.py`.
+You can find more information in the file `voice/audio_local.py`.
 
 ### Using Your Own Agent
 You can pass in the `--agent` (or `-a`) input parameter followed by a space and then the ID of your agent.
