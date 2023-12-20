@@ -64,7 +64,7 @@ You can find more information in the file `voice/audio_local.py`.
 You can pass in the `--agent` (or `-a`) input parameter followed by a space and then the ID of your agent.
 
 ### Using a Different Voice
-Adding more voices is a WIP. For now you can use the default voice or can pick any of the voices that are defined [here](https://github.com/fixie-ai/hisanta.ai/blob/main/lib/config.ts). Pass in the desired voiceID with the `--tts-voice` (`-tv`) parameter.
+Adding more voices is a WIP. For now you can use the default voice or can pick any of the voices that are defined [here](https://github.com/fixie-ai/hisanta.ai/blob/main/lib/config.ts). Pass in the desired voiceID with the `--tts-voice` (`-V`) parameter.
 
 ### Using Your Own Audio Devices
 Typically you will want to supply your own audio source and sink (e.g., to pipe the data to the phone network rather than the local audio devices). To do this, simply create your own classes derived from AudioSource and AudioSink and pass them in to the VoiceSession constructor.
