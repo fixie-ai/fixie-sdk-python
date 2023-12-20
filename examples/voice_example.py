@@ -10,7 +10,7 @@ from fixie_sdk.voice.session import VoiceSessionParams
 
 
 async def main():
-    # Get the default microphone and audio output device.
+    # Set up the audio devices.
     source = audio_local.LocalAudioSource()
     sink = audio_local.LocalAudioSink()
 
@@ -60,9 +60,8 @@ async def main():
     # Warm up the voice session by connecting to the server.
     await client.warmup()
 
-    # Not just warming up...Start the voice session.
-    if not args.warmup_only:
-        await client.start()
+    # Acquire the microphone and start the voice session.
+    await client.start()
 
     # Wait for the voice session to end.
     await done.wait()
@@ -80,14 +79,10 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--tts-voice",
-        "-tv",
+        "-V",
         type=str,
         default="Kp00queBTLslXxHCu1jq",
         help="TTS voice ID to use",
     )
-    parser.add_argument(
-        "--warmup-only", "-w", action="store_true", help="Only connect to the server"
-    )
     args = parser.parse_args()
-
     asyncio.run(main())
