@@ -72,9 +72,19 @@ async def main():
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "--agent", "-a", type=str, default="5d37e2c5-1e96-4c48-b3f1-98ac08d40b9a", help="Agent ID to talk to"
+        "--agent",
+        "-a",
+        type=str,
+        default="5d37e2c5-1e96-4c48-b3f1-98ac08d40b9a",
+        help="Agent ID to talk to",
     )
-    parser.add_argument("--tts-voice", "-tv", type=str, default="Kp00queBTLslXxHCu1jq", help="TTS voice ID to use")
+    parser.add_argument(
+        "--tts-voice",
+        "-tv",
+        type=str,
+        default="Kp00queBTLslXxHCu1jq",
+        help="TTS voice ID to use",
+    )
     parser.add_argument(
         "--warmup-only", "-w", action="store_true", help="Only connect to the server"
     )
