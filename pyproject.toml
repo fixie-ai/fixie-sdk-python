@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "fixie"
-version = "0.0.6"
+version = "0.0.7"
 description = "Fixie.ai SDK for Python. Enables you to build AI-powered voice applications."
 authors = ["Fixie.ai Team <hello@fixie.ai>"]
 license = "MIT"
