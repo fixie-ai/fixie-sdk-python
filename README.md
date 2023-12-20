@@ -112,7 +112,7 @@ poetry install
 ```
 1. Run included voice example
 ```bash
-poetry run python fixie_sdk/examples/voice_example.py
+poetry run python examples/voice_example.py
 ```
 Use `Ctrl-C` to terminate the program.
 
