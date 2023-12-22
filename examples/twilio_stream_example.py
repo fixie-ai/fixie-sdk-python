@@ -23,19 +23,19 @@ async def websocket_handler(request):
 
             # Using the event type you can determine what type of msg you are receiving
             if data["event"] == "connected":
-                logging.info(f"Received connected message: {msg}")
+                logging.info(f"Received connected message={msg}")
             if data["event"] == "start":
-                logging.info(f"Received start message: {msg}")
+                logging.info(f"Received start message={msg}")
             if data["event"] == "media":
                 payload = data["media"]["payload"]
                 chunk = base64.b64decode(payload)
                 if not media_count % 100:
                     logging.info(
-                        f"(Received {media_count}th media message: {msg} with payload size {len(chunk)}"
+                        f"(Received {media_count}th media message={msg} with payload size={len(chunk)}"
                     )
                 media_count = media_count + 1
             if data["event"] == "closed":
-                logging.info("Received close message: {msg}")
+                logging.info("Received close message={msg}")
                 await ws.close()
 
     logging.info("Websocket connection closed")
