@@ -12,11 +12,6 @@ HTTP_SERVER_PORT = 5000
 
 
 # Add logging stream handler, to also print to console
-logging.basicConfig(
-    filename="app.log",
-    level=logging.INFO,
-    format="%(asctime)s - %(levelname)s - %(message)s",
-)
 console_handler = logging.StreamHandler()  # Stream handler for console output
 console_handler.setLevel(logging.INFO)
 formatter = logging.Formatter("%(asctime)s - %(levelname)s - %(message)s")
