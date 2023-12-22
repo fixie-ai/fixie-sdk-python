@@ -78,6 +78,8 @@ Following https://www.twilio.com/docs/voice/tutorials/consume-real-time-media-st
      </Connect>
 </Response>
 ```
+Call the Twilio number associated with the above TwiML Bin.
+
 ### Using Your Own Agent
 You can pass in the `--agent` (or `-a`) input parameter followed by a space and then the ID of your agent.
 
