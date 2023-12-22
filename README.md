@@ -60,7 +60,7 @@ sink = audio_local.LocalAudioSink()
 
 You can find more information in the file `voice/audio_local.py`.
 
-2. Run included Twilio stream example
+3. Run included Twilio stream example
 ```bash
 poetry run python examples/twilio_stream_example.py
 ngrok http 5000
