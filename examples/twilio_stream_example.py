@@ -1,5 +1,6 @@
 import base64
 import json
+import logging
 
 import aiohttp.web
 
@@ -9,10 +10,10 @@ async def testhandle(request):
 
 
 async def websocket_handler(request):
-    print("Websocket connection starting")
+    logging.info("Websocket connection starting")
     ws = aiohttp.web.WebSocketResponse()
     await ws.prepare(request)
-    print("Websocket connection ready")
+    logging.info("Websocket connection ready")
     media_count = 0
 
     async for msg in ws:
@@ -22,24 +23,22 @@ async def websocket_handler(request):
 
             # Using the event type you can determine what type of msg you are receiving
             if data["event"] == "connected":
-                print("Connected Message received: {}".format(msg))
+                logging.info(f"Received connected message: {msg}")
             if data["event"] == "start":
-                print("Start Message received: {}".format(msg))
+                logging.info(f"Received start message: {msg}")
             if data["event"] == "media":
                 payload = data["media"]["payload"]
                 chunk = base64.b64decode(payload)
                 if not media_count % 100:
-                    print(
-                        "{}th media message {}: Payload bytes {}".format(
-                            media_count, msg, len(chunk)
-                        )
+                    logging.info(
+                        f"(Received {media_count}th media message: {msg} with payload size {len(chunk)}"
                     )
                 media_count = media_count + 1
             if data["event"] == "closed":
-                print("Closed Message received: {}".format(msg))
+                logging.info("Received close message: {msg}")
                 await ws.close()
 
-    print("Websocket connection closed")
+    logging.info("Websocket connection closed")
     return ws
 
 
