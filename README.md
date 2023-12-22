@@ -44,7 +44,7 @@ For a more complete example, see the command-line client included with the Fixie
 poetry install
 ```
 
-1. Run included voice example
+2. Run included voice example
 ```bash
 poetry run python examples/voice_example.py
 ```
@@ -59,6 +59,26 @@ sink = audio_local.LocalAudioSink()
 ```
 
 You can find more information in the file `voice/audio_local.py`.
+
+3. Run included Twilio stream example
+```bash
+poetry run python examples/twilio_stream_example.py
+ngrok http 5000
+```
+where ngrok output looks like
+```bash
+Forwarding  https://eb06-98-203-158-121.ngrok-free.app -> http://localhost:5000
+```
+
+Following https://www.twilio.com/docs/voice/tutorials/consume-real-time-media-stream-using-websockets-python-and-flask#start-streaming-audio to configure TwiML Bin
+```xml
+<Response>
+    <Connect>
+        <Stream url="wss://eb06-98-203-158-121.ngrok-free.app/media" />
+     </Connect>
+</Response>
+```
+Call the Twilio number associated with the above TwiML Bin.
 
 ### Using Your Own Agent
 You can pass in the `--agent` (or `-a`) input parameter followed by a space and then the ID of your agent.
