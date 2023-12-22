@@ -70,7 +70,7 @@ where ngrok output looks like
 Forwarding  https://eb06-98-203-158-121.ngrok-free.app -> http://localhost:5000
 ```
 
-Following https://www.twilio.com/docs/voice/tutorials/consume-real-time-media-stream-using-websockets-python-and-flask#start-streaming-audio to  configure TwiML Bin
+Following https://www.twilio.com/docs/voice/tutorials/consume-real-time-media-stream-using-websockets-python-and-flask#start-streaming-audio to configure TwiML Bin
 ```xml
 <Response>
     <Connect>
