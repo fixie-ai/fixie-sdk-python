@@ -1,4 +1,5 @@
 import asyncio
+import audioop
 from typing import AsyncGenerator
 
 from fixie_sdk.voice import audio_base
@@ -15,7 +16,8 @@ class PhoneAudioSink(audio_base.AudioSink):
         pass
 
     async def write(self, chunk: bytes) -> None:
-        pass
+        ulaw = audioop.lin2ulaw(chunk, 2)
+        await self._queue.put(ulaw)
 
     async def close(self) -> None:
         pass
@@ -29,7 +31,8 @@ class PhoneAudioSource(audio_base.AudioSource):
         self._queue: asyncio.Queue[bytes] = asyncio.Queue()
 
     async def write(self, chunk: bytes) -> None:
-        await self._queue.put(chunk)
+        pcm16 = audioop.ulaw2lin(chunk, 2)
+        await self._queue.put(pcm16)
 
     async def stream(self) -> AsyncGenerator[bytes, None]:
         while True:

@@ -1,6 +1,5 @@
 import argparse
 import asyncio
-import audioop
 import base64
 import json
 import logging
@@ -34,18 +33,15 @@ async def websocket_handler(request):
                 logging.info(f"Received connected message={msg}")
                 # Warm up the voice session by connecting to the server.
                 await client.warmup()
-
+            if data["event"] == "start":
+                logging.info(f"Received start message={msg}")
                 # Not just warming up...Start the voice session.
                 if not args.warmup_only:
                     await client.start()
-
-            if data["event"] == "start":
-                logging.info(f"Received start message={msg}")
             if data["event"] == "media":
                 payload = data["media"]["payload"]
-                ulaw = base64.b64decode(payload)
-                pcm16 = audioop.ulaw2lin(ulaw, 2)
-                await source.write(pcm16)
+                chunk = base64.b64decode(payload)
+                await source.write(chunk)
             if data["event"] == "closed":
                 logging.info("Received close message={msg}")
                 await ws.close()
