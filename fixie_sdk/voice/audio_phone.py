@@ -17,6 +17,7 @@ class PhoneAudioSink(audio_base.AudioSink):
         super().__init__()
         self._ws = ws
         self._stream_sid = ""
+        self._sequence_no = 0
 
     async def start(self, sample_rate: int = 8000, num_channels: int = 1):
         pass
@@ -41,10 +42,11 @@ class PhoneAudioSink(audio_base.AudioSink):
         mark_data = {
             "event": "mark",
             "streamSid": self._stream_sid,
-            "mark": {"name": self._stream_sid},
+            "mark": {"name": str(self._sequence_no)},
         }
         mark = json.dumps(mark_data)
         await self._ws.send_str(mark)
+        self._sequence_no = self._sequence_no + 1
 
     async def close(self) -> None:
         pass
