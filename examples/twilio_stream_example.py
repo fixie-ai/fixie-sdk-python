@@ -30,7 +30,7 @@ async def websocket_handler(request):
 
             # Using the event type you can determine what type of msg you are receiving
             if data["event"] == "connected":
-                print(f"Received connected message={msg}")
+                logging.info(f"Received connected message={msg}")
                 # Warm up the voice session by connecting to the server.
                 await client.warmup()
 
@@ -39,20 +39,20 @@ async def websocket_handler(request):
                     await client.start()
 
             if data["event"] == "start":
-                print(f"Received start message={msg}")
+                logging.info(f"Received start message={msg}")
             if data["event"] == "media":
                 payload = data["media"]["payload"]
                 chunk = base64.b64decode(payload)
                 if not media_count % 100:
-                    print(
+                    logging.info(
                         f"(Received {media_count}th media message={msg} with payload size={len(chunk)}"
                     )
                 media_count = media_count + 1
             if data["event"] == "closed":
-                print("Received close message={msg}")
+                logging.info("Received close message={msg}")
                 await ws.close()
 
-    print("Websocket connection closed")
+    logging.info("Websocket connection closed")
     # Wait for the voice session to end.
     await done.wait()
     await client.stop()
