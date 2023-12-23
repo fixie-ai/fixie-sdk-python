@@ -1,4 +1,6 @@
 import asyncio
+import base64
+import json
 from typing import AsyncGenerator
 
 import aiohttp.web
@@ -14,31 +16,35 @@ class PhoneAudioSink(audio_base.AudioSink):
     def __init__(self, ws: aiohttp.web.WebSocketResponse) -> None:
         super().__init__()
         self._ws = ws
+        self._stream_sid = ""
 
     async def start(self, sample_rate: int = 8000, num_channels: int = 1):
         pass
 
+    def stream_sid(self, value):
+        self._stream_sid = value
+
     async def write(self, chunk: bytes) -> None:
-        # TODO: write to ws
-        # https://github.com/twilio/media-streams/blob/master/node/connect-basic/server.js
-        # (Received 100th media message=WSMessage(type=<WSMsgType.TEXT: 1>, data='{"event":"media","sequenceNumber":"102","media":{"track":"inbound","chunk":"101","timestamp":"2088","payload":"/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////w=="},"streamSid":"MZ351c981a36cd9426fc1b17974b5d0327"}', extra='') with payload size=160
-        # frame_data = wav.read(1024)
-        #         if len(frame_data) == 0:
-        #             print('no more data')
-        #             break
-        #         base64_data = base64.b64encode(frame_data).decode('utf-8')
-        #         print('send base64 data')
-        #         media_data = {
-        #             "event": "media",
-        #             "streamSid": stream_sid,
-        #             "media": {
-        #                 "playload": base64_data
-        #             }
-        #         }
-        #         media = json.dumps(media_data)
-        #         print(f"media: {media}")
-        #         await ws.send(media)
-        pass
+        audio_data = numpy.frombuffer(chunk, dtype=numpy.int16).astype(numpy.float32)
+        ulaw = g711.encode_ulaw(audio_data)
+        pay_load = base64.b64encode(ulaw)
+        # Send media message
+        media_data = {
+            "event": "media",
+            "streamSid": self._stream_sid,
+            "media": {"payload": pay_load},
+        }
+        media = json.dumps(media_data)
+        await self._ws.send_str(media)
+
+        # Send mark message
+        mark_data = {
+            "event": "mark",
+            "streamSid": self._stream_sid,
+            "mark": {"name": self._stream_sid},
+        }
+        mark = json.dumps(mark_data)
+        await self._ws.send_str(mark)
 
     async def close(self) -> None:
         pass

@@ -6,6 +6,7 @@ import logging
 import aiohttp.web
 
 from fixie_sdk.voice import audio_phone
+from fixie_sdk.voice import types
 from fixie_sdk.voice.session import VoiceSession
 from fixie_sdk.voice.session import VoiceSessionParams
 
@@ -26,7 +27,31 @@ async def websocket_handler(request):
         agent_id=args.agent,
         tts_voice=args.tts_voice,
     )
-    client = VoiceSession(source, sink, params)
+    session = VoiceSession(source, sink, params)
+
+    # Set up the event handlers for the voice session.
+    @session.on("state")
+    async def on_state(state):
+        if state == types.SessionState.LISTENING:
+            print("User:  ", end="\r")
+        elif state == types.SessionState.THINKING:
+            print("Agent:  ", end="\r")
+
+    @session.on("input")
+    async def on_input(text, final):
+        print("User:  " + text, end="\n" if final else "\r")
+
+    @session.on("output")
+    async def on_output(text, final):
+        print("Agent: " + text, end="\n" if final else "\r")
+
+    @session.on("latency")
+    async def on_latency(metric, value):
+        logging.info(f"[session] latency: {metric.value}={value}")
+
+    @session.on("error")
+    async def on_error(error):
+        print(f"Error: {error}")
 
     async for msg in ws:
         if msg.type == aiohttp.WSMsgType.TEXT:
@@ -37,20 +62,22 @@ async def websocket_handler(request):
             if data["event"] == "connected":
                 logging.info(f"Received connected message={msg}")
                 # Warm up the voice session by connecting to the server.
-                await client.warmup()
+                await session.warmup()
             if data["event"] == "start":
                 logging.info(f"Received start message={msg}")
-                await client.start()
+                sink.stream_sid(data["streamSid"])
+                await session.start()
             if data["event"] == "media":
                 payload = data["media"]["payload"]
                 chunk = base64.b64decode(payload)
                 await source.write(chunk)
             if data["event"] == "stop":
                 logging.info(f"Received stop message={msg}")
-                await client.stop()
+                await session.stop()
                 await ws.close()
 
     logging.info("Websocket connection closed")
+    await session.stop()
     return ws
 
 
