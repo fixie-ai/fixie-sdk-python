@@ -26,7 +26,12 @@ class PhoneAudioSource(audio_base.AudioSource):
 
     def __init__(self, sample_rate=48000, channels=1):
         super().__init__(sample_rate, channels)
+        self._queue: asyncio.Queue[bytes] = asyncio.Queue()
+
+    async def write(self, chunk: bytes) -> None:
+        await self._queue.put(chunk)
 
     async def stream(self) -> AsyncGenerator[bytes, None]:
         while True:
-            yield b"\x00" * 960
+            buf = await self._queue.get()
+            yield buf if self.enabled else b"\x00" * len(buf)

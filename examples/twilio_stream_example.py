@@ -43,6 +43,7 @@ async def websocket_handler(request):
             if data["event"] == "media":
                 payload = data["media"]["payload"]
                 chunk = base64.b64decode(payload)
+                source.write(chunk)
                 if not media_count % 100:
                     logging.info(
                         f"(Received {media_count}th media message={msg} with payload size={len(chunk)}"
