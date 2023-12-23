@@ -432,6 +432,19 @@ files = [
 ]
 
 [[package]]
+name = "g711"
+version = "1.6.5"
+description = "A small library for A-Law and u-Law audio coding"
+optional = false
+python-versions = ">=3.6"
+files = [
+    {file = "g711-1.6.5.tar.gz", hash = "sha256:bcde5490806c7b86b4a9634eb3fa888e9bbc8a54878338bf52383c1bf9f69996"},
+]
+
+[package.dependencies]
+numpy = ">=1.20.1"
+
+[[package]]
 name = "idna"
 version = "3.6"
 description = "Internationalized Domain Names in Applications (IDNA)"
@@ -1158,4 +1171,4 @@ multidict = ">=4.0"
 [metadata]
 lock-version = "2.0"
 python-versions = "^3.11"
-content-hash = "67ac3b75f0e1c9ebef2636e858cc4bb140800365fbebb64986f25cc611ce7bdf"
+content-hash = "66cfda40f7920d14ae361a50b41267552a11c20599149fa2991c53446be7c575"

@@ -1,6 +1,8 @@
 import asyncio
-import audioop
 from typing import AsyncGenerator
+
+import g711
+import numpy
 
 from fixie_sdk.voice import audio_base
 
@@ -12,12 +14,11 @@ class PhoneAudioSink(audio_base.AudioSink):
         super().__init__()
         self._queue: asyncio.Queue[bytes] = asyncio.Queue()
 
-    async def start(self, sample_rate: int = 48000, num_channels: int = 1):
+    async def start(self, sample_rate: int = 8000, num_channels: int = 1):
         pass
 
     async def write(self, chunk: bytes) -> None:
-        ulaw = audioop.lin2ulaw(chunk, 2)
-        await self._queue.put(ulaw)
+        pass
 
     async def close(self) -> None:
         pass
@@ -26,13 +27,13 @@ class PhoneAudioSink(audio_base.AudioSink):
 class PhoneAudioSource(audio_base.AudioSource):
     """AudioSource that reads from the phone stream."""
 
-    def __init__(self, sample_rate=48000, channels=1):
+    def __init__(self, sample_rate=8000, channels=1):
         super().__init__(sample_rate, channels)
         self._queue: asyncio.Queue[bytes] = asyncio.Queue()
 
     async def write(self, chunk: bytes) -> None:
-        pcm16 = audioop.ulaw2lin(chunk, 2)
-        await self._queue.put(pcm16)
+        decoded = g711.decode_ulaw(chunk).astype(numpy.int16)
+        await self._queue.put(decoded)
 
     async def stream(self) -> AsyncGenerator[bytes, None]:
         while True:
