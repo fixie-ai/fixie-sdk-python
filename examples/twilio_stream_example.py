@@ -1,13 +1,12 @@
 import argparse
 import asyncio
+import audioop
 import base64
 import json
 import logging
 from typing import AsyncGenerator
 
 import aiohttp.web
-import g711
-import numpy
 
 from fixie_sdk.voice import audio_base
 from fixie_sdk.voice import types
@@ -36,8 +35,7 @@ class PhoneAudioSink(audio_base.AudioSink):
         self._stream_sid = value
 
     async def write(self, chunk: bytes) -> None:
-        audio_data = numpy.frombuffer(chunk, dtype=numpy.int16).astype(numpy.float32)
-        ulaw = g711.encode_ulaw(audio_data)
+        ulaw = audioop.lin2ulaw(chunk, 2)
         pay_load = base64.b64encode(ulaw)
         # Send media message
         media_data = {
@@ -70,7 +68,7 @@ class PhoneAudioSource(audio_base.AudioSource):
         self._queue: asyncio.Queue[bytes] = asyncio.Queue()
 
     async def write(self, chunk: bytes) -> None:
-        decoded = g711.decode_ulaw(chunk).astype(numpy.int16)
+        decoded = audioop.ulaw2lin(chunk, 2)
         await self._queue.put(decoded)
 
     async def stream(self) -> AsyncGenerator[bytes, None]:
@@ -131,6 +129,7 @@ async def websocket_handler(request):
                 logging.info(f"Received connected message={msg}")
                 # Warm up the voice session by connecting to the server.
                 await session.warmup()
+
             if data["event"] == "start":
                 logging.info(f"Received start message={msg}")
                 sink.stream_sid = data["streamSid"]
