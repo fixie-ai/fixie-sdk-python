@@ -32,9 +32,6 @@ class AudioSource(abc.ABC):
     async def stream(self):
         pass
 
-    async def write(self, data: bytes):
-        pass
-
 
 class AudioSink(abc.ABC):
     """Abstract base class for audio sinks."""

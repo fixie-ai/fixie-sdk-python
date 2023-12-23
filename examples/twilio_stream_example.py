@@ -42,8 +42,8 @@ async def websocket_handler(request):
                 payload = data["media"]["payload"]
                 chunk = base64.b64decode(payload)
                 await source.write(chunk)
-            if data["event"] == "closed":
-                logging.info("Received close message={msg}")
+            if data["event"] == "stop":
+                logging.info(f"Received stop message={msg}")
                 await ws.close()
 
     logging.info("Websocket connection closed")
