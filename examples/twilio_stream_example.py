@@ -1,5 +1,6 @@
 import argparse
 import asyncio
+import audioop
 import base64
 import json
 import logging
@@ -7,6 +8,7 @@ import signal
 
 import aiohttp.web
 
+from fixie_sdk.voice import audio_local
 from fixie_sdk.voice import audio_phone
 from fixie_sdk.voice.session import VoiceSession
 from fixie_sdk.voice.session import VoiceSessionParams
@@ -21,7 +23,6 @@ async def websocket_handler(request):
     ws = aiohttp.web.WebSocketResponse()
     await ws.prepare(request)
     logging.info("Websocket connection ready")
-    media_count = 0
 
     async for msg in ws:
         if msg.type == aiohttp.WSMsgType.TEXT:
@@ -42,13 +43,9 @@ async def websocket_handler(request):
                 logging.info(f"Received start message={msg}")
             if data["event"] == "media":
                 payload = data["media"]["payload"]
-                chunk = base64.b64decode(payload)
-                source.write(chunk)
-                if not media_count % 100:
-                    logging.info(
-                        f"(Received {media_count}th media message={msg} with payload size={len(chunk)}"
-                    )
-                media_count = media_count + 1
+                ulaw = base64.b64decode(payload)
+                pcm16 = audioop.ulaw2lin(ulaw, 2)
+                await source.write(pcm16)
             if data["event"] == "closed":
                 logging.info("Received close message={msg}")
                 await ws.close()
@@ -73,7 +70,7 @@ if __name__ == "__main__":
 
     # Get the default microphone and audio output device.
     source = audio_phone.PhoneAudioSource()
-    sink = audio_phone.PhoneAudioSink()
+    sink = audio_local.LocalAudioSink()
 
     # Set up the voice session parameters.
     params = VoiceSessionParams(
