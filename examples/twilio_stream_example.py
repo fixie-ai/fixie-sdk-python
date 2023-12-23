@@ -1,13 +1,10 @@
 import argparse
-import asyncio
 import base64
 import json
 import logging
-import signal
 
 import aiohttp.web
 
-from fixie_sdk.voice import audio_local
 from fixie_sdk.voice import audio_phone
 from fixie_sdk.voice.session import VoiceSession
 from fixie_sdk.voice.session import VoiceSessionParams
@@ -23,6 +20,14 @@ async def websocket_handler(request):
     await ws.prepare(request)
     logging.info("Websocket connection ready")
 
+    source = audio_phone.PhoneAudioSource()
+    sink = audio_phone.PhoneAudioSink(ws)
+    params = VoiceSessionParams(
+        agent_id=args.agent,
+        tts_voice=args.tts_voice,
+    )
+    client = VoiceSession(source, sink, params)
+
     async for msg in ws:
         if msg.type == aiohttp.WSMsgType.TEXT:
             # Messages are a JSON encoded string
@@ -35,55 +40,37 @@ async def websocket_handler(request):
                 await client.warmup()
             if data["event"] == "start":
                 logging.info(f"Received start message={msg}")
-                # Not just warming up...Start the voice session.
-                if not args.warmup_only:
-                    await client.start()
+                await client.start()
             if data["event"] == "media":
                 payload = data["media"]["payload"]
                 chunk = base64.b64decode(payload)
                 await source.write(chunk)
             if data["event"] == "stop":
                 logging.info(f"Received stop message={msg}")
+                await client.stop()
                 await ws.close()
 
     logging.info("Websocket connection closed")
-    # Wait for the voice session to end.
-    await done.wait()
-    await client.stop()
     return ws
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "--agent", "-a", type=str, default="dr-donut", help="Agent ID to talk to"
+        "--agent",
+        "-a",
+        type=str,
+        default="5d37e2c5-1e96-4c48-b3f1-98ac08d40b9a",
+        help="Agent ID to talk to",
     )
-    parser.add_argument("--tts-voice", "-tv", type=str, help="TTS voice ID to use")
     parser.add_argument(
-        "--warmup-only", "-w", action="store_true", help="Only connect to the server"
+        "--tts-voice",
+        "-V",
+        type=str,
+        default="Kp00queBTLslXxHCu1jq",
+        help="TTS voice ID to use",
     )
     args = parser.parse_args()
-
-    # Get the default microphone and audio output device.
-    source = audio_phone.PhoneAudioSource()
-    sink = audio_local.LocalAudioSink()
-
-    # Set up the voice session parameters.
-    params = VoiceSessionParams(
-        agent_id=args.agent,
-        tts_voice=args.tts_voice,
-    )
-
-    # Create the client for the voice session.
-    client = VoiceSession(source, sink, params)
-
-    # Set up an event loop for the voice session.
-    done = asyncio.Event()
-    loop = asyncio.get_event_loop()
-
-    # Set up signal handlers for SIGINT (Ctrl-C) and SIGTERM (kill).
-    loop.add_signal_handler(signal.SIGINT, lambda: done.set())
-    loop.add_signal_handler(signal.SIGTERM, lambda: done.set())
 
     app = aiohttp.web.Application()
     app.router.add_route("GET", "/", testhandle)
