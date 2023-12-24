@@ -17,44 +17,18 @@ from fixie_sdk.voice.session import VoiceSessionParams
 class PhoneAudioSink(audio_base.AudioSink):
     """AudioSink that plays to the phone stream."""
 
-    def __init__(self, ws: aiohttp.web.WebSocketResponse) -> None:
+    def __init__(self) -> None:
         super().__init__()
-        self._ws = ws
-        self._stream_sid = ""
-        self._sequence_no = 0
+        self._queue: asyncio.Queue[bytes] = asyncio.Queue()
 
     async def start(self, sample_rate: int = 8000, num_channels: int = 1):
         pass
 
-    @property
-    def stream_sid(self):
-        return self._stream_sid
-
-    @stream_sid.setter
-    def stream_sid(self, value):
-        self._stream_sid = value
-
     async def write(self, chunk: bytes) -> None:
-        ulaw = audioop.lin2ulaw(chunk, 2)
-        pay_load = base64.b64encode(ulaw)
-        # Send media message
-        media_data = {
-            "event": "media",
-            "streamSid": self._stream_sid,
-            "media": {"payload": pay_load},
-        }
-        media = json.dumps(media_data)
-        await self._ws.send_str(media)
+        await self._queue.put(chunk)
 
-        # Send mark message
-        mark_data = {
-            "event": "mark",
-            "streamSid": self._stream_sid,
-            "mark": {"name": str(self._sequence_no)},
-        }
-        mark = json.dumps(mark_data)
-        await self._ws.send_str(mark)
-        self._sequence_no = self._sequence_no + 1
+    def read(self) -> bytes:
+        return self._queue.get_nowait()
 
     async def close(self) -> None:
         pass
@@ -88,7 +62,7 @@ async def websocket_handler(request):
     logging.info("Websocket connection ready")
 
     source = PhoneAudioSource()
-    sink = PhoneAudioSink(ws)
+    sink = PhoneAudioSink()
     params = VoiceSessionParams(
         agent_id=args.agent,
         tts_voice=args.tts_voice,
@@ -119,6 +93,7 @@ async def websocket_handler(request):
     async def on_error(error):
         print(f"Error: {error}")
 
+    stream_sid = ""
     async for msg in ws:
         if msg.type == aiohttp.WSMsgType.TEXT:
             # Messages are a JSON encoded string
@@ -132,12 +107,28 @@ async def websocket_handler(request):
 
             if data["event"] == "start":
                 logging.info(f"Received start message={msg}")
-                sink.stream_sid = data["streamSid"]
+                stream_sid = data["streamSid"]
                 await session.start()
+
             if data["event"] == "media":
                 payload = data["media"]["payload"]
                 chunk = base64.b64decode(payload)
                 await source.write(chunk)
+
+                try:
+                    # TODO: something wrong here. The phone receives merchanic voice
+                    chunk = sink.read()
+                    ulaw = audioop.lin2ulaw(chunk, 2)
+                    payload = base64.b64encode(ulaw).decode("utf-8")
+                    media_data = {
+                        "event": "media",
+                        "streamSid": stream_sid,
+                        "media": {"payload": payload},
+                    }
+                    await ws.send_json(media_data)
+                except asyncio.QueueEmpty:
+                    pass
+
             if data["event"] == "stop":
                 logging.info(f"Received stop message={msg}")
                 await session.stop()
