@@ -27,7 +27,12 @@ class PhoneAudioSink(audio_base.AudioSink, pyee_asyncio.AsyncIOEventEmitter):
         pass
 
     async def write(self, chunk: bytes) -> None:
-        self.emit("data", chunk)
+        sample = numpy.frombuffer(chunk, numpy.int16).astype(numpy.float32)
+        resampled = librosa.resample(sample, orig_sr=48000, target_sr=8000).astype(
+            numpy.int16
+        )
+        ulaw = audioop.lin2ulaw(resampled.tobytes(), 2)
+        self.emit("data", ulaw)
 
     async def close(self) -> None:
         pass
@@ -71,12 +76,7 @@ async def websocket_handler(request):
 
     @sink.on("data")
     async def on_sink_data(data):
-        sample = numpy.frombuffer(data, dtype="int16").astype(numpy.float32)
-        audio_resampled = librosa.resample(
-            sample, orig_sr=48000, target_sr=8000
-        ).astype(numpy.int16)
-        ulaw = audioop.lin2ulaw(audio_resampled, 2)
-        payload = base64.b64encode(ulaw).decode()
+        payload = base64.b64encode(data).decode()
         media_data = {
             "event": "media",
             "streamSid": stream_sid,
