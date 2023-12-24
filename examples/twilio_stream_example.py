@@ -9,6 +9,7 @@ from typing import AsyncGenerator
 import aiohttp.web
 import librosa
 import numpy
+from pyee import asyncio as pyee_asyncio
 
 from fixie_sdk.voice import audio_base
 from fixie_sdk.voice import types
@@ -16,21 +17,17 @@ from fixie_sdk.voice.session import VoiceSession
 from fixie_sdk.voice.session import VoiceSessionParams
 
 
-class PhoneAudioSink(audio_base.AudioSink):
+class PhoneAudioSink(audio_base.AudioSink, pyee_asyncio.AsyncIOEventEmitter):
     """AudioSink that plays to the phone stream."""
 
     def __init__(self) -> None:
         super().__init__()
-        self._queue: asyncio.Queue[bytes] = asyncio.Queue()
 
     async def start(self, sample_rate: int = 8000, num_channels: int = 1):
         pass
 
     async def write(self, chunk: bytes) -> None:
-        await self._queue.put(chunk)
-
-    def read(self) -> bytes:
-        return self._queue.get_nowait()
+        self.emit("data", chunk)
 
     async def close(self) -> None:
         pass
@@ -70,6 +67,21 @@ async def websocket_handler(request):
         tts_voice=args.tts_voice,
     )
     session = VoiceSession(source, sink, params)
+
+    @sink.on("data")
+    async def on_sink_data(data):
+        sample = numpy.frombuffer(data, dtype="int16").astype(numpy.float32)
+        audio_resampled = librosa.resample(
+            sample, orig_sr=48000, target_sr=8000
+        ).astype(numpy.int16)
+        ulaw = audioop.lin2ulaw(audio_resampled, 2)
+        payload = base64.b64encode(ulaw).decode()
+        media_data = {
+            "event": "media",
+            "streamSid": stream_sid,
+            "media": {"payload": payload},
+        }
+        await ws.send_json(media_data)
 
     # Set up the event handlers for the voice session.
     @session.on("state")
@@ -116,26 +128,6 @@ async def websocket_handler(request):
                 payload = data["media"]["payload"]
                 chunk = base64.b64decode(payload)
                 await source.write(chunk)
-
-                try:
-                    # TODO: something wrong here. The phone receives merchanic voice
-                    chunk = sink.read()
-                    sample = numpy.frombuffer(chunk, dtype="int16").astype(
-                        numpy.float32
-                    )
-                    audio_resampled = librosa.resample(
-                        sample, orig_sr=48000, target_sr=8000
-                    ).astype(numpy.int16)
-                    ulaw = audioop.lin2ulaw(audio_resampled, 2)
-                    payload = base64.b64encode(ulaw).decode()
-                    media_data = {
-                        "event": "media",
-                        "streamSid": stream_sid,
-                        "media": {"payload": payload},
-                    }
-                    await ws.send_json(media_data)
-                except asyncio.QueueEmpty:
-                    pass
 
             if data["event"] == "stop":
                 logging.info(f"Received stop message={msg}")
