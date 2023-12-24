@@ -67,6 +67,7 @@ async def websocket_handler(request):
         tts_voice=args.tts_voice,
     )
     session = VoiceSession(source, sink, params)
+    stream_sid = ""
 
     @sink.on("data")
     async def on_sink_data(data):
@@ -107,7 +108,6 @@ async def websocket_handler(request):
     async def on_error(error):
         print(f"Error: {error}")
 
-    stream_sid = ""
     async for msg in ws:
         if msg.type == aiohttp.WSMsgType.TEXT:
             # Messages are a JSON encoded string
