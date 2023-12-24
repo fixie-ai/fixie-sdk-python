@@ -7,6 +7,9 @@ import logging
 from typing import AsyncGenerator
 
 import aiohttp.web
+import librosa
+import numpy
+from pyee import asyncio as pyee_asyncio
 
 from fixie_sdk.voice import audio_base
 from fixie_sdk.voice import types
@@ -14,47 +17,22 @@ from fixie_sdk.voice.session import VoiceSession
 from fixie_sdk.voice.session import VoiceSessionParams
 
 
-class PhoneAudioSink(audio_base.AudioSink):
+class PhoneAudioSink(audio_base.AudioSink, pyee_asyncio.AsyncIOEventEmitter):
     """AudioSink that plays to the phone stream."""
 
-    def __init__(self, ws: aiohttp.web.WebSocketResponse) -> None:
+    def __init__(self) -> None:
         super().__init__()
-        self._ws = ws
-        self._stream_sid = ""
-        self._sequence_no = 0
 
-    async def start(self, sample_rate: int = 8000, num_channels: int = 1):
-        pass
-
-    @property
-    def stream_sid(self):
-        return self._stream_sid
-
-    @stream_sid.setter
-    def stream_sid(self, value):
-        self._stream_sid = value
+    async def start(self, sample_rate: int, num_channels: int):
+        self._sample_rate = sample_rate
 
     async def write(self, chunk: bytes) -> None:
-        ulaw = audioop.lin2ulaw(chunk, 2)
-        pay_load = base64.b64encode(ulaw)
-        # Send media message
-        media_data = {
-            "event": "media",
-            "streamSid": self._stream_sid,
-            "media": {"payload": pay_load},
-        }
-        media = json.dumps(media_data)
-        await self._ws.send_str(media)
-
-        # Send mark message
-        mark_data = {
-            "event": "mark",
-            "streamSid": self._stream_sid,
-            "mark": {"name": str(self._sequence_no)},
-        }
-        mark = json.dumps(mark_data)
-        await self._ws.send_str(mark)
-        self._sequence_no = self._sequence_no + 1
+        sample = numpy.frombuffer(chunk, numpy.int16).astype(numpy.float32)
+        resampled = librosa.resample(
+            sample, orig_sr=self._sample_rate, target_sr=8000
+        ).astype(numpy.int16)
+        ulaw = audioop.lin2ulaw(resampled.tobytes(), 2)
+        self.emit("data", ulaw)
 
     async def close(self) -> None:
         pass
@@ -88,12 +66,23 @@ async def websocket_handler(request):
     logging.info("Websocket connection ready")
 
     source = PhoneAudioSource()
-    sink = PhoneAudioSink(ws)
+    sink = PhoneAudioSink()
     params = VoiceSessionParams(
         agent_id=args.agent,
         tts_voice=args.tts_voice,
     )
     session = VoiceSession(source, sink, params)
+    stream_sid = ""
+
+    @sink.on("data")
+    async def on_sink_data(data):
+        payload = base64.b64encode(data).decode()
+        media_data = {
+            "event": "media",
+            "streamSid": stream_sid,
+            "media": {"payload": payload},
+        }
+        await ws.send_json(media_data)
 
     # Set up the event handlers for the voice session.
     @session.on("state")
@@ -132,12 +121,14 @@ async def websocket_handler(request):
 
             if data["event"] == "start":
                 logging.info(f"Received start message={msg}")
-                sink.stream_sid = data["streamSid"]
+                stream_sid = data["streamSid"]
                 await session.start()
+
             if data["event"] == "media":
                 payload = data["media"]["payload"]
                 chunk = base64.b64decode(payload)
                 await source.write(chunk)
+
             if data["event"] == "stop":
                 logging.info(f"Received stop message={msg}")
                 await session.stop()
