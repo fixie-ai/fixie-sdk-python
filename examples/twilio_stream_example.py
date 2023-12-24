@@ -23,14 +23,14 @@ class PhoneAudioSink(audio_base.AudioSink, pyee_asyncio.AsyncIOEventEmitter):
     def __init__(self) -> None:
         super().__init__()
 
-    async def start(self, sample_rate: int = 8000, num_channels: int = 1):
-        pass
+    async def start(self, sample_rate: int, num_channels: int):
+        self._sample_rate = sample_rate
 
     async def write(self, chunk: bytes) -> None:
         sample = numpy.frombuffer(chunk, numpy.int16).astype(numpy.float32)
-        resampled = librosa.resample(sample, orig_sr=48000, target_sr=8000).astype(
-            numpy.int16
-        )
+        resampled = librosa.resample(
+            sample, orig_sr=self._sample_rate, target_sr=8000
+        ).astype(numpy.int16)
         ulaw = audioop.lin2ulaw(resampled.tobytes(), 2)
         self.emit("data", ulaw)
 
