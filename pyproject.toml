@@ -22,6 +22,7 @@ numpy = "^1.26.2"
 pyee = "^11.1.0"
 setuptools = "^69.0.2"
 aiohttp = "^3.9.1"
+librosa = "^0.10.1"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^7.1.3"

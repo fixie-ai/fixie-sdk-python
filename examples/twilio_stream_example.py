@@ -7,6 +7,8 @@ import logging
 from typing import AsyncGenerator
 
 import aiohttp.web
+import librosa
+import numpy
 
 from fixie_sdk.voice import audio_base
 from fixie_sdk.voice import types
@@ -118,8 +120,14 @@ async def websocket_handler(request):
                 try:
                     # TODO: something wrong here. The phone receives merchanic voice
                     chunk = sink.read()
-                    ulaw = audioop.lin2ulaw(chunk, 2)
-                    payload = base64.b64encode(ulaw).decode("utf-8")
+                    sample = numpy.frombuffer(chunk, dtype="int16").astype(
+                        numpy.float32
+                    )
+                    audio_resampled = librosa.resample(
+                        sample, orig_sr=48000, target_sr=8000
+                    ).astype(numpy.int16)
+                    ulaw = audioop.lin2ulaw(audio_resampled, 2)
+                    payload = base64.b64encode(ulaw).decode()
                     media_data = {
                         "event": "media",
                         "streamSid": stream_sid,
