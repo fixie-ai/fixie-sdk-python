@@ -13,7 +13,6 @@ import soxr
 from pyee import asyncio as pyee_asyncio
 
 from fixie_sdk.voice import audio_base
-from fixie_sdk.voice import types
 from fixie_sdk.voice.session import VoiceSession
 from fixie_sdk.voice.session import VoiceSessionParams
 
@@ -31,8 +30,8 @@ class PhoneAudioSink(audio_base.AudioSink, pyee_asyncio.AsyncIOEventEmitter):
         self._sample_rate = sample_rate
 
     async def write(self, chunk: bytes) -> None:
-        sample = numpy.frombuffer(chunk, numpy.int16).astype(numpy.float32)
-        resampled = soxr.resample(sample, 48000, 8000).astype(numpy.int16)
+        sample = numpy.frombuffer(chunk, numpy.int16)
+        resampled = soxr.resample(sample, self._sample_rate, 8000).astype(numpy.int16)
         ulaw = audioop.lin2ulaw(resampled.tobytes(), 2)
         self.emit("data", ulaw)
 
@@ -93,15 +92,12 @@ async def websocket_handler(request):
     # Set up the event handlers for the voice session.
     @session.on("state")
     async def on_state(state):
-        if state == types.SessionState.LISTENING:
-            logging.info("State:  Listening")
-        elif state == types.SessionState.THINKING:
-            logging.info("State:  Thinking")
+        logging.info(f"State: {state}")
 
     @session.on("input")
     async def on_input(text, final):
         if final:
-            logging.info("User:  " + text)
+            logging.info("User: " + text)
 
     @session.on("output")
     async def on_output(text, final):
