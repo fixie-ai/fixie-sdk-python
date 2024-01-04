@@ -15,7 +15,6 @@ include = ["LICENSE", "README.md"]
 python = "^3.11"
 aiohttp = "^3.9.1"
 dataclasses-json = "^0.6.3"
-fixie = "^0.0.8"
 livekit = "0.7.0.dev1"
 numpy = "^1.26.2"
 pydub = "^0.25.1"
