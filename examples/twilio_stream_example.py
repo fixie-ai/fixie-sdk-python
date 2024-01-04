@@ -10,21 +10,27 @@ from typing import AsyncGenerator
 import aiohttp.web
 import numpy
 import soxr
-from pyee import asyncio as pyee_asyncio
 
 from fixie_sdk.voice import audio_base
 from fixie_sdk.voice.session import VoiceSession
 from fixie_sdk.voice.session import VoiceSessionParams
 
+# Maximum amount of audio data we will queue; we'll drop any additional data.
+MAX_QUEUE_SIZE = 10  # 100 ms
+
 # Make sure our logger is configured to show info messages.
 logging.basicConfig(level=logging.INFO)
 
 
-class PhoneAudioSink(audio_base.AudioSink, pyee_asyncio.AsyncIOEventEmitter):
-    """AudioSink that plays to the phone stream."""
+class PhoneAudioSink(audio_base.AudioSink):
+    """AudioSink that queues up audio for the phone stream."""
 
     def __init__(self) -> None:
         super().__init__()
+        self._queue = asyncio.Queue(MAX_QUEUE_SIZE)
+
+    def get(self) -> bytes:
+        return self._queue.get_nowait() or b"\x00\x00" * 80
 
     async def start(self, sample_rate: int, num_channels: int):
         self._sample_rate = sample_rate
@@ -33,7 +39,10 @@ class PhoneAudioSink(audio_base.AudioSink, pyee_asyncio.AsyncIOEventEmitter):
         sample = numpy.frombuffer(chunk, numpy.int16)
         resampled = soxr.resample(sample, self._sample_rate, 8000).astype(numpy.int16)
         ulaw = audioop.lin2ulaw(resampled.tobytes(), 2)
-        self.emit("data", ulaw)
+        try:
+            self._queue.put_nowait(ulaw)
+        except asyncio.QueueFull:
+            logging.warning("Dropping audio data; queue is full")
 
     async def close(self) -> None:
         pass
@@ -79,15 +88,19 @@ async def websocket_handler(request):
     session = VoiceSession(source, sink, params)
     stream_sid = ""
 
-    @sink.on("data")
-    async def on_sink_data(data):
-        payload = base64.b64encode(data).decode()
-        media_data = {
-            "event": "media",
-            "streamSid": stream_sid,
-            "media": {"payload": payload},
-        }
-        await ws.send_json(media_data)
+    async def send():
+        while True:
+            try:
+                data = await sink.get()
+                media_data = {
+                    "event": "media",
+                    "streamSid": stream_sid,
+                    "media": {"payload": base64.b64encode(data).decode()},
+                }
+                await ws.send_json(media_data)
+            except asyncio.CancelledError:
+                break
+            await asyncio.sleep(0.01)
 
     # Set up the event handlers for the voice session.
     @session.on("state")
@@ -106,7 +119,7 @@ async def websocket_handler(request):
 
     @session.on("latency")
     async def on_latency(metric, value):
-        logging.info(f"[session] latency: {metric.value}={value}")
+        logging.info(f"Latency: {metric.value}={value}")
 
     @session.on("error")
     async def on_error(error):
@@ -116,27 +129,29 @@ async def websocket_handler(request):
         if msg.type == aiohttp.WSMsgType.TEXT:
             # Messages are a JSON encoded string
             data = json.loads(msg.data)
+            match data["event"]:
+                case "connected":
+                    logging.info(f"Received connected message={msg}")
+                    # Warm up the voice session by connecting to the server.
+                    await session.warmup()
 
-            # Using the event type you can determine what type of msg you are receiving
-            if data["event"] == "connected":
-                logging.info(f"Received connected message={msg}")
-                # Warm up the voice session by connecting to the server.
-                await session.warmup()
+                case "start":
+                    logging.info(f"Received start message={msg}")
+                    stream_sid = data["streamSid"]
+                    await session.start()
+                    send_task = asyncio.create_task(send())
 
-            if data["event"] == "start":
-                logging.info(f"Received start message={msg}")
-                stream_sid = data["streamSid"]
-                await session.start()
+                case "media":
+                    payload = data["media"]["payload"]
+                    chunk = base64.b64decode(payload)
+                    await source.write(chunk)
 
-            if data["event"] == "media":
-                payload = data["media"]["payload"]
-                chunk = base64.b64decode(payload)
-                await source.write(chunk)
-
-            if data["event"] == "stop":
-                logging.info(f"Received stop message={msg}")
-                await session.stop()
-                await ws.close()
+                case "stop":
+                    logging.info(f"Received stop message={msg}")
+                    send_task.cancel()
+                    await send_task
+                    await session.stop()
+                    await ws.close()
 
     logging.info("Websocket connection closed")
     await session.stop()
@@ -145,6 +160,16 @@ async def websocket_handler(request):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--interface",
+        "-i",
+        type=str,
+        default="localhost",
+        help="Interface to listen on",
+    )
+    parser.add_argument(
+        "--port", "-p", type=int, default=5000, help="Port to listen on"
+    )
     parser.add_argument(
         "--agent",
         "-a",
@@ -164,4 +189,4 @@ if __name__ == "__main__":
     app = aiohttp.web.Application()
     app.router.add_route("GET", "/", testhandle)
     app.router.add_route("GET", "/media", websocket_handler)
-    aiohttp.web.run_app(app, host="0.0.0.0", port=5000)
+    aiohttp.web.run_app(app, host=args.interface, port=args.port)
