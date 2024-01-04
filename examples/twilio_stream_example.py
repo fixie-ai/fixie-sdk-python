@@ -25,18 +25,20 @@ class PhoneAudioSink(audio_base.AudioSink, pyee_asyncio.AsyncIOEventEmitter):
 
     async def start(self, sample_rate: int, num_channels: int):
         self._sample_rate = sample_rate
+
+
 import argparse
 import asyncio
 import audioop
 import base64
 import json
 import logging
-import soxr
 import time
 from typing import AsyncGenerator
 
 import aiohttp.web
 import numpy
+import soxr
 from pyee import asyncio as pyee_asyncio
 
 from fixie_sdk.voice import audio_base
@@ -46,6 +48,7 @@ from fixie_sdk.voice.session import VoiceSessionParams
 
 # Make sure our logger is configured to show info messages.
 logging.basicConfig(level=logging.INFO)
+
 
 class PhoneAudioSink(audio_base.AudioSink, pyee_asyncio.AsyncIOEventEmitter):
     """AudioSink that plays to the phone stream."""
@@ -93,7 +96,9 @@ async def websocket_handler(request):
     ws_prepare_start_time = time.perf_counter()
     await ws.prepare(request)
     ws_prepare_total_time = time.perf_counter() - ws_prepare_start_time
-    logging.info(f"Websocket connection ready. Took {ws_prepare_total_time * 1000} milliseconds")
+    logging.info(
+        f"Websocket connection ready. Took {ws_prepare_total_time * 1000} milliseconds"
+    )
 
     source = PhoneAudioSource()
     sink = PhoneAudioSink()
