@@ -4,17 +4,20 @@ import audioop
 import base64
 import json
 import logging
+import time
 from typing import AsyncGenerator
 
 import aiohttp.web
-import librosa
 import numpy
+import soxr
 from pyee import asyncio as pyee_asyncio
 
 from fixie_sdk.voice import audio_base
-from fixie_sdk.voice import types
 from fixie_sdk.voice.session import VoiceSession
 from fixie_sdk.voice.session import VoiceSessionParams
+
+# Make sure our logger is configured to show info messages.
+logging.basicConfig(level=logging.INFO)
 
 
 class PhoneAudioSink(audio_base.AudioSink, pyee_asyncio.AsyncIOEventEmitter):
@@ -27,10 +30,8 @@ class PhoneAudioSink(audio_base.AudioSink, pyee_asyncio.AsyncIOEventEmitter):
         self._sample_rate = sample_rate
 
     async def write(self, chunk: bytes) -> None:
-        sample = numpy.frombuffer(chunk, numpy.int16).astype(numpy.float32)
-        resampled = librosa.resample(
-            sample, orig_sr=self._sample_rate, target_sr=8000
-        ).astype(numpy.int16)
+        sample = numpy.frombuffer(chunk, numpy.int16)
+        resampled = soxr.resample(sample, self._sample_rate, 8000).astype(numpy.int16)
         ulaw = audioop.lin2ulaw(resampled.tobytes(), 2)
         self.emit("data", ulaw)
 
@@ -62,8 +63,12 @@ async def testhandle(request):
 async def websocket_handler(request):
     logging.info("Websocket connection starting")
     ws = aiohttp.web.WebSocketResponse()
+    ws_prepare_start_time = time.perf_counter()
     await ws.prepare(request)
-    logging.info("Websocket connection ready")
+    ws_prepare_total_time = time.perf_counter() - ws_prepare_start_time
+    logging.info(
+        f"Websocket connection ready. Took {ws_prepare_total_time * 1000} milliseconds"
+    )
 
     source = PhoneAudioSource()
     sink = PhoneAudioSink()
@@ -87,18 +92,17 @@ async def websocket_handler(request):
     # Set up the event handlers for the voice session.
     @session.on("state")
     async def on_state(state):
-        if state == types.SessionState.LISTENING:
-            print("User:  ", end="\r")
-        elif state == types.SessionState.THINKING:
-            print("Agent:  ", end="\r")
+        logging.info(f"State: {state}")
 
     @session.on("input")
     async def on_input(text, final):
-        print("User:  " + text, end="\n" if final else "\r")
+        if final:
+            logging.info("User: " + text)
 
     @session.on("output")
     async def on_output(text, final):
-        print("Agent: " + text, end="\n" if final else "\r")
+        if final:
+            logging.info("Agent: " + text)
 
     @session.on("latency")
     async def on_latency(metric, value):
@@ -106,7 +110,7 @@ async def websocket_handler(request):
 
     @session.on("error")
     async def on_error(error):
-        print(f"Error: {error}")
+        logging.error(f"Error: {error}")
 
     async for msg in ws:
         if msg.type == aiohttp.WSMsgType.TEXT:
@@ -160,4 +164,4 @@ if __name__ == "__main__":
     app = aiohttp.web.Application()
     app.router.add_route("GET", "/", testhandle)
     app.router.add_route("GET", "/media", websocket_handler)
-    aiohttp.web.run_app(app, host="localhost", port=5000)
+    aiohttp.web.run_app(app, host="0.0.0.0", port=5000)
