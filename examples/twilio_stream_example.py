@@ -27,7 +27,7 @@ class PhoneAudioSink(audio_base.AudioSink):
 
     def __init__(self) -> None:
         super().__init__()
-        self._queue = asyncio.Queue(MAX_QUEUE_SIZE)
+        self._queue: asyncio.Queue[bytes] = asyncio.Queue(MAX_QUEUE_SIZE)
 
     def get(self) -> bytes:
         return self._queue.get_nowait() or b"\x00\x00" * 80
@@ -51,7 +51,7 @@ class PhoneAudioSink(audio_base.AudioSink):
 class PhoneAudioSource(audio_base.AudioSource):
     """AudioSource that reads from the phone stream."""
 
-    def __init__(self, sample_rate=8000, channels=1):
+    def __init__(self, sample_rate: int = 8000, channels: int = 1):
         super().__init__(sample_rate, channels)
         self._queue: asyncio.Queue[bytes] = asyncio.Queue()
 
@@ -87,6 +87,7 @@ async def websocket_handler(request):
     )
     session = VoiceSession(source, sink, params)
     stream_sid = ""
+    send_task = None
 
     async def send():
         while True:
@@ -148,8 +149,9 @@ async def websocket_handler(request):
 
                 case "stop":
                     logging.info(f"Received stop message={msg}")
-                    send_task.cancel()
-                    await send_task
+                    if send_task:
+                        send_task.cancel()
+                        await send_task
                     await session.stop()
                     await ws.close()
 
