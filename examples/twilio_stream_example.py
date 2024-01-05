@@ -29,8 +29,11 @@ class PhoneAudioSink(audio_base.AudioSink):
         super().__init__()
         self._queue: asyncio.Queue[bytes] = asyncio.Queue(MAX_QUEUE_SIZE)
 
-    def get(self) -> bytes:
-        return self._queue.get_nowait() or b"\x00\x00" * 80
+    async def get(self, timeout: float) -> bytes:
+        try:
+            return await asyncio.wait_for(self._queue.get(), timeout=timeout)
+        except asyncio.TimeoutError:
+            return b"\x00" * 160  # 10ms of silence
 
     async def start(self, sample_rate: int, num_channels: int):
         self._sample_rate = sample_rate
@@ -92,7 +95,7 @@ async def websocket_handler(request):
     async def send():
         while True:
             try:
-                data = await sink.get()
+                data = await sink.get(0.01)
                 media_data = {
                     "event": "media",
                     "streamSid": stream_sid,
@@ -101,7 +104,12 @@ async def websocket_handler(request):
                 await ws.send_json(media_data)
             except asyncio.CancelledError:
                 break
-            await asyncio.sleep(0.01)
+
+    async def shutdown():
+        if send_task:
+            send_task.cancel()
+            await send_task
+        await session.stop()
 
     # Set up the event handlers for the voice session.
     @session.on("state")
@@ -149,14 +157,11 @@ async def websocket_handler(request):
 
                 case "stop":
                     logging.info(f"Received stop message={msg}")
-                    if send_task:
-                        send_task.cancel()
-                        await send_task
-                    await session.stop()
+                    await shutdown()
                     await ws.close()
 
     logging.info("Websocket connection closed")
-    await session.stop()
+    await shutdown()
     return ws
 
 
