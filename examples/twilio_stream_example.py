@@ -100,9 +100,9 @@ async def websocket_handler(request):
                 data = await sink.get(0.01)
                 if not data:
                     continue
-                logging.info(
-                    f"Sending {len(data)} bytes of audio data, first few bytes: {data[:10]}"
-                )
+                # logging.info(
+                #    f"Sending {len(data)} bytes of audio data, first few bytes: {data[:10]}"
+                # )
                 media_data = {
                     "event": "media",
                     "streamSid": stream_sid,
