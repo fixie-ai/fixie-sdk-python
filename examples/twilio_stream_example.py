@@ -5,7 +5,7 @@ import base64
 import json
 import logging
 import time
-from typing import AsyncGenerator
+from typing import AsyncGenerator, Optional
 
 import aiohttp.web
 import numpy
@@ -28,14 +28,19 @@ class PhoneAudioSink(audio_base.AudioSink):
     def __init__(self) -> None:
         super().__init__()
         self._queue: asyncio.Queue[bytes] = asyncio.Queue(MAX_QUEUE_SIZE)
+        self._started = False
 
-    def get(self) -> bytes:
-        return self._queue.get_nowait() or b"\x00\x00" * 80
+    async def get(self, timeout: float) -> Optional[bytes]:
+        try:
+            return await asyncio.wait_for(self._queue.get(), timeout=timeout)
+        except asyncio.TimeoutError:
+            return b"\xff" * 80 if not self._started else None
 
     async def start(self, sample_rate: int, num_channels: int):
         self._sample_rate = sample_rate
 
     async def write(self, chunk: bytes) -> None:
+        self._started = True
         sample = numpy.frombuffer(chunk, numpy.int16)
         resampled = soxr.resample(sample, self._sample_rate, 8000).astype(numpy.int16)
         ulaw = audioop.lin2ulaw(resampled.tobytes(), 2)
@@ -92,7 +97,12 @@ async def websocket_handler(request):
     async def send():
         while True:
             try:
-                data = await sink.get()
+                data = await sink.get(0.01)
+                if not data:
+                    continue
+                # logging.info(
+                #    f"Sending {len(data)} bytes of audio data, first few bytes: {data[:10]}"
+                # )
                 media_data = {
                     "event": "media",
                     "streamSid": stream_sid,
@@ -101,7 +111,12 @@ async def websocket_handler(request):
                 await ws.send_json(media_data)
             except asyncio.CancelledError:
                 break
-            await asyncio.sleep(0.01)
+
+    async def shutdown():
+        if send_task:
+            send_task.cancel()
+            await send_task
+        await session.stop()
 
     # Set up the event handlers for the voice session.
     @session.on("state")
@@ -149,14 +164,11 @@ async def websocket_handler(request):
 
                 case "stop":
                     logging.info(f"Received stop message={msg}")
-                    if send_task:
-                        send_task.cancel()
-                        await send_task
-                    await session.stop()
+                    await shutdown()
                     await ws.close()
 
     logging.info("Websocket connection closed")
-    await session.stop()
+    await shutdown()
     return ws
 
 
