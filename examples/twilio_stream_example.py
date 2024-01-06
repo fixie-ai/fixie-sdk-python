@@ -5,7 +5,7 @@ import base64
 import json
 import logging
 import time
-from typing import AsyncGenerator
+from typing import AsyncGenerator, Optional
 
 import aiohttp.web
 import numpy
@@ -37,6 +37,7 @@ class PhoneAudioSink(audio_base.AudioSink, pyee_asyncio.AsyncIOEventEmitter):
         self._sample_rate = sample_rate
 
     async def write(self, chunk: bytes) -> None:
+        self._started = True
         sample = numpy.frombuffer(chunk, numpy.int16)
         resampled = soxr.resample(sample, self._sample_rate, 8000).astype(numpy.int16)
         ulaw = audioop.lin2ulaw(resampled.tobytes(), 2)
