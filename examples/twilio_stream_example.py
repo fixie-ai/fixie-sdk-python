@@ -25,6 +25,7 @@ logging.basicConfig(
     level=logging.INFO,
     datefmt="%Y-%m-%d %H:%M:%S",
 )
+logging.getLogger("livekit").disabled = True
 
 
 class PhoneAudioSink(audio_base.AudioSink, pyee_asyncio.AsyncIOEventEmitter):
@@ -78,22 +79,19 @@ async def testhandle(request):
 async def websocket_handler(request):
     logging.info("Websocket connection starting")
     ws = aiohttp.web.WebSocketResponse()
-    ws_prepare_start_time = time.perf_counter()
     await ws.prepare(request)
-    ws_prepare_msec = (time.perf_counter() - ws_prepare_start_time) * 1000
-    logging.info(f"Websocket connection ready, took {ws_prepare_msec:.0f} ms")
 
     source = PhoneAudioSource()
     sink = PhoneAudioSink()
-    params = VoiceSessionParams(
-        agent_id=args.agent,
-        tts_voice=args.tts_voice,
-    )
+    params = VoiceSessionParams(agent_id=args.agent, tts_voice=args.tts_voice)
     session = VoiceSession(source, sink, params)
     stream_sid = ""
+    next_packet_number = 1
+    packet_send_times = {}
 
     @sink.on("data")
     async def on_sink_data(data):
+        nonlocal next_packet_number
         assert stream_sid
         media_data = {
             "event": "media",
@@ -101,6 +99,18 @@ async def websocket_handler(request):
             "media": {"payload": base64.b64encode(data).decode()},
         }
         await ws.send_json(media_data)
+
+        # Mark every 100th packet so we can measure RTT.
+        packet_number = next_packet_number
+        next_packet_number += 1
+        if packet_number % 100 == 1:
+            packet_send_times[next_packet_number] = time.perf_counter()
+            mark_data = {
+                "event": "mark",
+                "streamSid": stream_sid,
+                "mark": {"name": str(packet_number)},
+            }
+            await ws.send_json(mark_data)
 
     # Set up the event handlers for the voice session.
     @session.on("state")
@@ -145,6 +155,15 @@ async def websocket_handler(request):
                     payload = data["media"]["payload"]
                     chunk = base64.b64decode(payload)
                     source.write(chunk)
+
+                case "mark":
+                    # Determine RTT based on our packet send times.
+                    now = time.perf_counter()
+                    packet_number = data["mark"]["name"]
+                    packet_send_time = packet_send_times[int(packet_number)]
+                    del packet_send_times[int(packet_number)]
+                    rtt_ms = (now - packet_send_time) * 1000
+                    logging.info(f"RTT for packet {packet_number}: {rtt_ms:.0f} ms")
 
                 case "stop":
                     # Stop the voice session and close the websocket.
