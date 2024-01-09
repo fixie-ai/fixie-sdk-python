@@ -83,7 +83,9 @@ async def websocket_handler(request):
 
     source = PhoneAudioSource()
     sink = PhoneAudioSink()
-    params = VoiceSessionParams(agent_id=args.agent, tts_voice=args.tts_voice)
+    params = VoiceSessionParams(
+        agent_id=args.agent, tts_voice=args.tts_voice, webrtc_url=args.webrtc_url
+    )
     session = VoiceSession(source, sink, params)
     stream_sid = ""
     next_packet_number = 1
@@ -102,13 +104,14 @@ async def websocket_handler(request):
 
         # Mark every 100th packet so we can measure RTT.
         packet_number = next_packet_number
+        packet_number_str = str(packet_number)
         next_packet_number += 1
         if packet_number % 100 == 1:
-            packet_send_times[next_packet_number] = time.perf_counter()
+            packet_send_times[packet_number_str] = time.perf_counter()
             mark_data = {
                 "event": "mark",
                 "streamSid": stream_sid,
-                "mark": {"name": str(packet_number)},
+                "mark": {"name": packet_number_str},
             }
             await ws.send_json(mark_data)
 
@@ -159,11 +162,14 @@ async def websocket_handler(request):
                 case "mark":
                     # Determine RTT based on our packet send times.
                     now = time.perf_counter()
-                    packet_number = data["mark"]["name"]
-                    packet_send_time = packet_send_times[int(packet_number)]
-                    del packet_send_times[int(packet_number)]
-                    rtt_ms = (now - packet_send_time) * 1000
-                    logging.info(f"RTT for packet {packet_number}: {rtt_ms:.0f} ms")
+                    packet_number_str = data["mark"]["name"]
+                    packet_send_time = packet_send_times.get(packet_number_str, None)
+                    if packet_send_time is not None:
+                        del packet_send_times[packet_number_str]
+                        rtt_ms = (now - packet_send_time) * 1000
+                        logging.info(f"Packet {packet_number_str} RTT: {rtt_ms:.0f} ms")
+                    else:
+                        logging.warning(f"Packet {packet_number_str}: unexpected mark")
 
                 case "stop":
                     # Stop the voice session and close the websocket.
@@ -205,6 +211,13 @@ if __name__ == "__main__":
         type=str,
         default="Kp00queBTLslXxHCu1jq",
         help="TTS voice ID to use",
+    )
+    parser.add_argument(
+        "--webrtc-url",
+        "-u",
+        type=str,
+        default="wss://wsapi.fixie.ai",
+        help="WebRTC URL to use",
     )
     args = parser.parse_args()
 
