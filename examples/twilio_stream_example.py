@@ -5,11 +5,12 @@ import base64
 import json
 import logging
 import time
-from typing import AsyncGenerator, Optional
+from typing import AsyncGenerator
 
 import aiohttp.web
 import numpy
 import soxr
+from pyee import asyncio as pyee_asyncio
 
 from fixie_sdk.voice import audio_base
 from fixie_sdk.voice.session import VoiceSession
@@ -19,22 +20,19 @@ from fixie_sdk.voice.session import VoiceSessionParams
 MAX_QUEUE_SIZE = 10  # 100 ms
 
 # Make sure our logger is configured to show info messages.
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(
+    format="%(asctime)s.%(msecs)03d %(levelname)-8s %(message)s",
+    level=logging.INFO,
+    datefmt="%Y-%m-%d %H:%M:%S",
+)
+logging.getLogger("livekit").disabled = True
 
 
-class PhoneAudioSink(audio_base.AudioSink):
+class PhoneAudioSink(audio_base.AudioSink, pyee_asyncio.AsyncIOEventEmitter):
     """AudioSink that queues up audio for the phone stream."""
 
     def __init__(self) -> None:
         super().__init__()
-        self._queue: asyncio.Queue[bytes] = asyncio.Queue(MAX_QUEUE_SIZE)
-        self._started = False
-
-    async def get(self, timeout: float) -> Optional[bytes]:
-        try:
-            return await asyncio.wait_for(self._queue.get(), timeout=timeout)
-        except asyncio.TimeoutError:
-            return b"\xff" * 80 if not self._started else None
 
     async def start(self, sample_rate: int, num_channels: int):
         self._sample_rate = sample_rate
@@ -44,10 +42,7 @@ class PhoneAudioSink(audio_base.AudioSink):
         sample = numpy.frombuffer(chunk, numpy.int16)
         resampled = soxr.resample(sample, self._sample_rate, 8000).astype(numpy.int16)
         ulaw = audioop.lin2ulaw(resampled.tobytes(), 2)
-        try:
-            self._queue.put_nowait(ulaw)
-        except asyncio.QueueFull:
-            logging.warning("Dropping audio data; queue is full")
+        self.emit("data", ulaw)
 
     async def close(self) -> None:
         pass
@@ -58,13 +53,20 @@ class PhoneAudioSource(audio_base.AudioSource):
 
     def __init__(self, sample_rate: int = 8000, channels: int = 1):
         super().__init__(sample_rate, channels)
-        self._queue: asyncio.Queue[bytes] = asyncio.Queue()
+        self._queue: asyncio.Queue[bytes] = asyncio.Queue(MAX_QUEUE_SIZE)
+        self._started = False
 
-    async def write(self, chunk: bytes) -> None:
+    def write(self, chunk: bytes) -> None:
+        if not self._started:
+            return
         decoded = audioop.ulaw2lin(chunk, 2)
-        await self._queue.put(decoded)
+        try:
+            self._queue.put_nowait(decoded)
+        except asyncio.QueueFull:
+            logging.warning("Dropping audio data; queue is full")
 
     async def stream(self) -> AsyncGenerator[bytes, None]:
+        self._started = True
         while True:
             buf = await self._queue.get()
             yield buf if self.enabled else b"\x00" * len(buf)
@@ -77,46 +79,41 @@ async def testhandle(request):
 async def websocket_handler(request):
     logging.info("Websocket connection starting")
     ws = aiohttp.web.WebSocketResponse()
-    ws_prepare_start_time = time.perf_counter()
     await ws.prepare(request)
-    ws_prepare_total_time = time.perf_counter() - ws_prepare_start_time
-    logging.info(
-        f"Websocket connection ready. Took {ws_prepare_total_time * 1000} milliseconds"
-    )
 
     source = PhoneAudioSource()
     sink = PhoneAudioSink()
     params = VoiceSessionParams(
-        agent_id=args.agent,
-        tts_voice=args.tts_voice,
+        agent_id=args.agent, tts_voice=args.tts_voice, webrtc_url=args.webrtc_url
     )
     session = VoiceSession(source, sink, params)
     stream_sid = ""
-    send_task = None
+    next_packet_number = 1
+    packet_send_times = {}
 
-    async def send():
-        while True:
-            try:
-                data = await sink.get(0.01)
-                if not data:
-                    continue
-                # logging.info(
-                #    f"Sending {len(data)} bytes of audio data, first few bytes: {data[:10]}"
-                # )
-                media_data = {
-                    "event": "media",
-                    "streamSid": stream_sid,
-                    "media": {"payload": base64.b64encode(data).decode()},
-                }
-                await ws.send_json(media_data)
-            except asyncio.CancelledError:
-                break
+    @sink.on("data")
+    async def on_sink_data(data):
+        nonlocal next_packet_number
+        assert stream_sid
+        media_data = {
+            "event": "media",
+            "streamSid": stream_sid,
+            "media": {"payload": base64.b64encode(data).decode()},
+        }
+        await ws.send_json(media_data)
 
-    async def shutdown():
-        if send_task:
-            send_task.cancel()
-            await send_task
-        await session.stop()
+        # Mark every 100th packet so we can measure RTT.
+        packet_number = next_packet_number
+        packet_number_str = str(packet_number)
+        next_packet_number += 1
+        if packet_number % 100 == 1:
+            packet_send_times[packet_number_str] = time.perf_counter()
+            mark_data = {
+                "event": "mark",
+                "streamSid": stream_sid,
+                "mark": {"name": packet_number_str},
+            }
+            await ws.send_json(mark_data)
 
     # Set up the event handlers for the voice session.
     @session.on("state")
@@ -125,13 +122,11 @@ async def websocket_handler(request):
 
     @session.on("input")
     async def on_input(text, final):
-        if final:
-            logging.info("User: " + text)
+        logging.info(f"User: {text}{' FINAL' if final else ''}")
 
     @session.on("output")
     async def on_output(text, final):
-        if final:
-            logging.info("Agent: " + text)
+        logging.info(f"Agent: {text}{' FINAL' if final else ''}")
 
     @session.on("latency")
     async def on_latency(metric, value):
@@ -147,28 +142,43 @@ async def websocket_handler(request):
             data = json.loads(msg.data)
             match data["event"]:
                 case "connected":
-                    logging.info(f"Received connected message={msg}")
-                    # Warm up the voice session by connecting to the server.
+                    # Connect to the voice server.
+                    logging.info(f"Received connected message={data}")
                     await session.warmup()
 
                 case "start":
-                    logging.info(f"Received start message={msg}")
+                    # Publish our track to the voice server.
+                    logging.info(f"Received start message={data}")
                     stream_sid = data["streamSid"]
                     await session.start()
-                    send_task = asyncio.create_task(send())
 
                 case "media":
+                    # If we've published our track, forward the received
+                    # audio to the voice server.
                     payload = data["media"]["payload"]
                     chunk = base64.b64decode(payload)
-                    await source.write(chunk)
+                    source.write(chunk)
+
+                case "mark":
+                    # Determine RTT based on our packet send times.
+                    now = time.perf_counter()
+                    packet_number_str = data["mark"]["name"]
+                    packet_send_time = packet_send_times.get(packet_number_str, None)
+                    if packet_send_time is not None:
+                        del packet_send_times[packet_number_str]
+                        rtt_ms = (now - packet_send_time) * 1000
+                        logging.info(f"Packet {packet_number_str} RTT: {rtt_ms:.0f} ms")
+                    else:
+                        logging.warning(f"Packet {packet_number_str}: unexpected mark")
 
                 case "stop":
-                    logging.info(f"Received stop message={msg}")
-                    await shutdown()
+                    # Stop the voice session and close the websocket.
+                    logging.info(f"Received stop message={data}")
+                    await session.stop()
                     await ws.close()
 
     logging.info("Websocket connection closed")
-    await shutdown()
+    await session.stop()
     return ws
 
 
@@ -182,7 +192,11 @@ if __name__ == "__main__":
         help="Interface to listen on",
     )
     parser.add_argument(
-        "--port", "-p", type=int, default=5000, help="Port to listen on"
+        "--port",
+        "-p",
+        type=int,
+        default=5000,
+        help="Port to listen on",
     )
     parser.add_argument(
         "--agent",
@@ -197,6 +211,13 @@ if __name__ == "__main__":
         type=str,
         default="Kp00queBTLslXxHCu1jq",
         help="TTS voice ID to use",
+    )
+    parser.add_argument(
+        "--webrtc-url",
+        "-u",
+        type=str,
+        default="wss://wsapi.fixie.ai",
+        help="WebRTC URL to use",
     )
     args = parser.parse_args()
 
